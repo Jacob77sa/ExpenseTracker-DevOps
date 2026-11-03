@@ -1,10 +1,24 @@
 using ExpenseTracker;
 
+var startedAt = DateTime.UtcNow;
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<ExpenseService>();
 var app = builder.Build();
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+
+app.MapGet("/status", (ExpenseService service) => new
+{
+    status = "healthy",
+    startedAt,
+    uptimeSeconds = (long)(DateTime.UtcNow - startedAt).TotalSeconds,
+    expenses = service.GetAll().Count,
+    total = service.Total()
+});
 
 app.MapGet("/expenses", (ExpenseService service) => service.GetAll());
 
