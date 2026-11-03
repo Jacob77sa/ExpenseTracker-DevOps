@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExpenseTracker Status</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f4f6f8; color: #1f2933; margin: 0; }
+  main { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
+  header { display: flex; justify-content: space-between; align-items: center; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  h2 { margin: 0 0 8px; font-size: 1rem; color: #52606d; }
+  .badge { padding: 4px 14px; border-radius: 999px; color: #fff; background: #9aa5b1; font-size: .9rem; }
+  .ok { color: #2f9e44; } .bad { color: #e03131; }
+  .badge.ok { background: #2f9e44; color: #fff; } .badge.bad { background: #e03131; color: #fff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 16px; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .grid .card { margin-top: 0; }
+  .label { font-size: .8rem; color: #7b8794; }
+  .value { font-size: 1.6rem; font-weight: 700; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 4px 0; border-bottom: 1px solid #e4e7eb; font-family: ui-monospace, monospace; font-size: .85rem; }
+  .cats { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cat { background: #e7f0ff; border-radius: 8px; padding: 6px 12px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input { padding: 8px; border: 1px solid #cbd2d9; border-radius: 8px; flex: 1; min-width: 120px; }
+  button { padding: 8px 16px; border: 0; border-radius: 8px; background: #1c7ed6; color: #fff; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid #e4e7eb; }
+  .err { color: #e03131; min-height: 1em; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>ExpenseTracker Status</h1><span id="badge" class="badge">...</span></header>
+
+  <section class="grid">
+    <div class="card"><div class="label">სტატუსი</div><div class="value" id="state">-</div></div>
+    <div class="card"><div class="label">Uptime</div><div class="value" id="uptime">-</div></div>
+    <div class="card"><div class="label">ხარჯები</div><div class="value" id="count">0</div></div>
+    <div class="card"><div class="label">ჯამი</div><div class="value" id="total">0.00</div></div>
+  </section>
+
+  <div class="card"><h2>Health check-ების ისტორია</h2><ul id="history"></ul></div>
+  <div class="card"><h2>კატეგორიები</h2><div class="cats" id="cats"></div></div>
+
+  <div class="card">
+    <h2>ახალი ხარჯი</h2>
+    <form id="form">
+      <input id="description" placeholder="აღწერა" required>
+      <input id="amount" type="number" step="0.01" placeholder="თანხა" required>
+      <input id="category" placeholder="კატეგორია" required>
+      <button>დამატება</button>
+    </form>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="card">
+    <table><thead><tr><th>#</th><th>აღწერა</th><th>კატეგორია</th><th>თანხა</th></tr></thead>
+    <tbody id="rows"></tbody></table>
+  </div>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const history = [];
+
+  function fmt(s) {
+    const m = Math.floor(s / 60);
+    return m > 0 ? m + ' წთ ' + (s % 60) + ' წმ' : s + ' წმ';
+  }
+
+  async function checkStatus() {
+    let ok = false, data = null;
+    try {
+      ok = (await fetch('/health')).ok;
+      if (ok) data = await (await fetch('/status')).json();
+    } catch { ok = false; }
+
+    history.unshift({ time: new Date().toLocaleTimeString(), ok });
+    if (history.length > 8) history.pop();
+
+    $('badge').textContent = ok ? 'healthy' : 'offline';
+    $('badge').className = 'badge ' + (ok ? 'ok' : 'bad');
+    $('state').textContent = ok ? 'მუშაობს' : 'მიუწვდომელია';
+    $('state').className = 'value ' + (ok ? 'ok' : 'bad');
+    if (data) {
+      $('uptime').textContent = fmt(data.uptimeSeconds);
+      $('count').textContent = data.expenses;
+      $('total').textContent = data.total.toFixed(2);
+    }
+    $('history').replaceChildren(...history.map(h => {
+      const li = document.createElement('li');
+      li.textContent = h.time + ' — ' + (h.ok ? 'HEALTHY' : 'UNHEALTHY');
+      li.className = h.ok ? 'ok' : 'bad';
+      return li;
+    }));
+  }
+
+  async function loadExpenses() {
+    const s = await (await fetch('/summary')).json();
+    $('cats').replaceChildren(...Object.entries(s.byCategory).map(([k, v]) => {
+      const d = document.createElement('div');
+      d.className = 'cat';
+      d.textContent = k + ': ' + v.toFixed(2);
+      return d;
+    }));
+    const list = await (await fetch('/expenses')).json();
+    $('rows').replaceChildren(...list.map(e => {
+      const tr = document.createElement('tr');
+      [e.id, e.description, e.category, e.amount.toFixed(2)].forEach(v => {
+        const td = document.createElement('td');
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
+  }
+
+  $('form').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const r = await fetch('/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: $('description').value,
+        amount: parseFloat($('amount').value),
+        category: $('category').value
+      })
+    });
+    $('err').textContent = r.ok ? '' : (await r.json()).error;
+    if (r.ok) { $('form').reset(); loadExpenses(); checkStatus(); }
+  });
+
+  checkStatus();
+  loadExpenses();
+  setInterval(checkStatus, 3000);
+</script>
+</body>
+</html>

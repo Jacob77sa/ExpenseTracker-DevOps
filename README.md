@@ -1,14 +1,16 @@
 # ExpenseTracker DevOps
 
-ხარჯების აღრიცხვის მარტივი REST API (C#, ASP.NET Core Minimal API, .NET 10) სრული CI/CD პაიპლაინით GitHub Actions-ზე.
+ხარჯების აღრიცხვის მარტივი REST API სტატუს-დეშბორდით (C#, ASP.NET Core Minimal API, .NET 10) სრული CI/CD პაიპლაინით GitHub Actions-ზე.
 
 ## პროექტის აღწერა
 
-აპლიკაცია საშუალებას იძლევა დავამატოთ ხარჯები (აღწერა, თანხა, კატეგორია) და ვნახოთ ჯამები კატეგორიების მიხედვით.
+აპლიკაცია საშუალებას იძლევა დავამატოთ ხარჯები (აღწერა, თანხა, კატეგორია) და ვნახოთ ჯამები კატეგორიების მიხედვით. მთავარ გვერდზე მუშაობს ვიზუალური დეშბორდი.
 
 | Endpoint | აღწერა |
 |---|---|
+| `GET /` | ვიზუალური status დეშბორდი |
 | `GET /health` | აპლიკაციის ჯანმრთელობის შემოწმება |
+| `GET /status` | uptime, ხარჯების რაოდენობა და ჯამი |
 | `GET /expenses` | ყველა ხარჯის სია |
 | `POST /expenses` | ახალი ხარჯის დამატება (ვალიდაციით) |
 | `GET /summary` | საერთო ჯამი და ჯამი კატეგორიების მიხედვით |
@@ -29,7 +31,7 @@ Workflow ეშვება ყოველ `push`-ზე და Pull Request-�
 3. **Deploy** — ლოკალური Blue-Green დეპლოიმენტი `production/` საქაღალდეში (`scripts/deploy.sh`):
    - პირველი დეპლოი `blue` სლოტზე, შემდეგ გადართვა `green`-ზე;
    - ყოველი დეპლოის შემდეგ health check (`scripts/monitor.sh`), შედეგი იწერება `production/monitoring.log`-ში;
-   - უარყოფითი health check-ის შემთხვევაში ავტომატური **rollback**: ახალი ვერსია ჩერდება და მუშა ვერსია აქტიური რჩება;
+   - უარყოფითი health check-ის შემთხვევაში ავტომატური **rollback**;
    - ლოგები იტვირთება artifact-ად.
 
 ### Workflow diagram
@@ -61,13 +63,29 @@ GitHub Actions-ში Build, Test და Deploy საფეხურები �
 ![Tests](docs/images/tests.png)
 
 ### მომუშავე აპლიკაცია
-`/health` endpoint აპლიკაციის სტატუსს აბრუნებს.
+აპლიკაციის გაშვების მომენტში ხარჯები ცარიელია, health check-ები კი ავტომატურად ახლდება:
 
-![Health](docs/images/app-health.png)
+![Dashboard start](docs/images/app-dashboard-start.png)
 
-`/summary` endpoint აჩვენებს ჯამებს კატეგორიების მიხედვით.
+ხარჯების დამატების შემდეგ ახლდება ჯამი, კატეგორიები და ცხრილი:
 
-![Summary](docs/images/app-summary.png)
+![Dashboard with expenses](docs/images/app-dashboard-expenses.png)
+
+ახალი კატეგორიის (Drink) დამატების შემდეგ:
+
+![Dashboard](docs/images/app-dashboard.png)
+
+## ბონუსი
+
+### ვიზუალური დეშბორდი (status display)
+
+მთავარი გვერდი (`/`) 3 წამში ერთხელ ამოწმებს `/health` და `/status` endpoint-ებს და აჩვენებს: სტატუსის ბეჯს (healthy/offline), uptime-ს, ხარჯების რაოდენობასა და ჯამს, health check-ების ბოლო ისტორიას, კატეგორიების ჯამებს და ხარჯის დამატების ფორმას (იხ. სქრინშოტები ზემოთ).
+
+### ავტომატური Rollback
+
+`scripts/deploy.sh` ყოველ ახალ ვერსიას ცალკე სლოტზე (blue/green) უშვებს და ამოწმებს `/health`-ს. თუ health check უარყოფითია, ახალი ვერსია ჩერდება, `production/monitoring.log`-ში იწერება `ROLLBACK reason=unhealthy-candidate`, ხოლო მუშა ვერსია აქტიური რჩება. workflow-ის ნაბიჯი "Verify rollback on unhealthy release" ამას ყოველ Deploy-ზე ავტომატურად ამოწმებს (იმიტირებული გაუმართავი ვერსიით).
+
+![Rollback](docs/images/rollback.png)
 
 ## ლოკალურად გაშვება
 
