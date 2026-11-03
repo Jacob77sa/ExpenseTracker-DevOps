@@ -98,3 +98,18 @@ dotnet run --project src/ExpenseTracker
 ## მონიტორინგი
 
 `scripts/monitor.sh` ამოწმებს `/health` endpoint-ს `curl`-ით და შედეგს (HEALTHY/UNHEALTHY, დრო, HTTP კოდი) ამატებს `production/monitoring.log` ფაილში. Rollback-ის შემთხვევაში იქვე იწერება `ROLLBACK` ჩანაწერი.
+
+## Deploy-ის გარემო და მონიტორინგის ლოგი
+
+`production/` საქაღალდე იქმნება GitHub Actions runner-ზე Deploy job-ის დროს (`scripts/deploy.sh`) და განზრახ არ ინახება რეპოში (`.gitignore`). მასში არის `blue/` და `green/` სლოტები, `current` ბმული აქტიურ სლოტზე და `monitoring.log`. ლოგები ყოველ run-ზე იტვირთება artifact-ად (`deployment-logs`).
+
+ლოგის ნიმუში Deploy job-იდან (`monitoring.log`):
+
+```
+2026-11-03T11:02:57Z DEPLOYED slot=blue port=5001
+2026-11-03T11:02:57Z HEALTHY port=5001 http=200
+2026-11-03T11:02:59Z DEPLOYED slot=green port=5002
+2026-11-03T11:02:59Z HEALTHY port=5002 http=200
+2026-11-03T11:03:02Z ROLLBACK reason=unhealthy-candidate slot=blue
+2026-11-03T11:03:02Z HEALTHY port=5002 http=200
+```
