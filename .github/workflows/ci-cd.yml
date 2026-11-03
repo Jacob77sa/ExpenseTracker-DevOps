@@ -1,0 +1,89 @@
+name: ExpenseTracker CI/CD
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore, compile and publish
+        run: bash scripts/build.sh
+      - name: Upload published app
+        uses: actions/upload-artifact@v6
+        with:
+          name: expensetracker-app
+          path: build/app
+          if-no-files-found: error
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run unit and API tests
+        run: bash scripts/test.sh
+
+  deploy:
+    name: Deploy
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Download published app
+        uses: actions/download-artifact@v7
+        with:
+          name: expensetracker-app
+          path: build/app
+      - name: Deploy blue release and verify health
+        run: |
+          bash scripts/deploy.sh
+          bash scripts/monitor.sh --once
+      - name: Switch to green release
+        run: |
+          bash scripts/deploy.sh
+          bash scripts/monitor.sh --once
+      - name: Verify rollback on unhealthy release
+        run: |
+          OLD_SLOT="$(readlink production/current)"
+          if INJECT_FAILURE=1 CHECK_ATTEMPTS=3 bash scripts/deploy.sh; then
+            echo 'Expected unhealthy deployment to fail.' >&2
+            exit 1
+          fi
+          test "$(readlink production/current)" = "$OLD_SLOT"
+          bash scripts/monitor.sh --once
+          grep -q 'ROLLBACK reason=unhealthy-candidate' production/monitoring.log
+          echo 'Rollback verified: healthy release remains active.'
+      - name: Upload deployment and monitoring logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: deployment-logs
+          path: |
+            production/monitoring.log
+            production/*.log
+          if-no-files-found: ignore
+      - name: Stop local app
+        if: always()
+        run: bash scripts/stop.sh
